@@ -236,6 +236,7 @@ footer{margin-top:20px;display:flex;justify-content:space-between;gap:12px;flex-
           <button class="full" id="addTemp">บันทึกอุณหภูมิ</button>
         </div>
         <div id="pD" hidden>
+          <div class="field"><label for="doseName">ยาที่กิน (ชื่อยา/ขนาด)</label><input type="text" id="doseName" list="medList" maxlength="60" placeholder="เช่น พาราเซตามอล 250 มก." autocomplete="off"><datalist id="medList"></datalist></div>
           <div class="field"><label for="doseTime">เวลาที่กินยา</label><input type="datetime-local" id="doseTime"></div>
           <div class="field"><label for="interval">กินซ้ำทุก</label>
             <select id="interval"><option value="4">4 ชั่วโมง</option><option value="6">6 ชั่วโมง</option><option value="8">8 ชั่วโมง</option></select></div>
@@ -335,6 +336,7 @@ async function sync(){
   }finally{syncBusy=false}
 }
 const $=id=>document.getElementById(id);
+const esc=x=>String(x).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]);
 const p2=n=>String(n).padStart(2,"0");
 const fT=ms=>{const d=new Date(ms);return p2(d.getHours())+":"+p2(d.getMinutes())};
 const fD=ms=>{const d=new Date(ms);return d.getDate()+"/"+(d.getMonth()+1)+"/"+String(d.getFullYear()).slice(2)};
@@ -352,7 +354,7 @@ function message(){
   const t=lastTemp(),d=lastDose(),n=nextDoseAt();
   let m="รายงานอาการ น้องกวินธดา (ล้านรัก)\n";
   if(t)m+="ไข้ล่าสุด "+t.v.toFixed(1)+" °C ("+fDT(t.t)+") - "+lvlText(t.v)+"\n";
-  if(d)m+="กินยาล่าสุด "+fDT(d.t)+"\n";
+  if(d)m+="กินยาล่าสุด "+(d.name?d.name+" ":"")+fDT(d.t)+"\n";
   if(n)m+="ยาครั้งถัดไป "+fDT(n)+" (ทุก "+S.interval+" ชม.)";
   return m;
 }
@@ -370,7 +372,7 @@ function renderKpis(){
   if(t){const l=level(t.v);h+=`<div class="kpi" style="--c:${col(l)}"><div class="lb">ไข้ล่าสุด</div><div class="v t-${l}">${t.v.toFixed(1)} °C</div><div class="s">${lvlText(t.v)} · ${fT(t.t)} น. ${fD(t.t)}</div></div>`}
   else h+=`<div class="kpi"><div class="lb">ไข้ล่าสุด</div><div class="v">-</div><div class="s">ยังไม่มีการวัด</div></div>`;
   h+=max!==null?`<div class="kpi" style="--c:${col(level(max))}"><div class="lb">สูงสุดที่วัดได้</div><div class="v">${max.toFixed(1)} °C</div><div class="s">จาก ${temps.length} ครั้ง</div></div>`:`<div class="kpi"><div class="lb">สูงสุดที่วัดได้</div><div class="v">-</div></div>`;
-  h+=d?`<div class="kpi" style="--c:var(--green)"><div class="lb">กินยาล่าสุด</div><div class="v">${fT(d.t)} น.</div><div class="s">วันที่ ${fD(d.t)} · ทั้งหมด ${S.doses.length} ครั้ง</div></div>`:`<div class="kpi"><div class="lb">กินยาล่าสุด</div><div class="v">-</div></div>`;
+  h+=d?`<div class="kpi" style="--c:var(--green)"><div class="lb">กินยาล่าสุด</div><div class="v">${fT(d.t)} น.</div><div class="s">${d.name?esc(d.name)+" · ":""}วันที่ ${fD(d.t)} · ทั้งหมด ${S.doses.length} ครั้ง</div></div>`:`<div class="kpi"><div class="lb">กินยาล่าสุด</div><div class="v">-</div></div>`;
   if(n){
     const diff=n-Date.now(),due=diff<=0,a=Math.abs(diff),hh=Math.floor(a/H),mm=Math.floor(a%H/60000);
     const frac=1-diff/(S.interval*H);
@@ -428,7 +430,7 @@ function renderLog(){
     if(dd!==day){day=dd;out+=`<li class="day">${dd}</li>`}
     out+=i.k==="t"
      ?`<li class="ev" style="--c:${col(level(i.v))}"><span class="tm">${fT(i.t)}</span><span class="tx">วัดไข้ <b>${i.v.toFixed(1)} °C</b> · ${lvlText(i.v)}</span><button class="ghost" data-k="t" data-id="${i.id}" aria-label="ลบรายการวัดไข้">ลบ</button></li>`
-     :`<li class="ev" style="--c:var(--blue)"><span class="tm">${fT(i.t)}</span><span class="tx">กินยา</span><button class="ghost" data-k="d" data-id="${i.id}" aria-label="ลบรายการกินยา">ลบ</button></li>`;
+     :`<li class="ev" style="--c:var(--blue)"><span class="tm">${fT(i.t)}</span><span class="tx">กินยา${i.name?" <b>"+esc(i.name)+"</b>":""}</span><button class="ghost" data-k="d" data-id="${i.id}" aria-label="ลบรายการกินยา">ลบ</button></li>`;
   });
   $("log").innerHTML=out;
 }
@@ -436,7 +438,11 @@ function renderMsg(refresh){
   if(refresh||document.activeElement!==$("msg"))$("msg").value=message();
   $("lineLink").href="https://line.me/R/msg/text/?"+encodeURIComponent($("msg").value);
 }
-function renderAll(){renderKpis();renderChart();renderLog();renderMsg(true);renderGuide();$("interval").value=String(S.interval)}
+function renderMeds(){
+  const names=[...new Set(S.doses.map(d=>d.name).filter(Boolean))];
+  $("medList").innerHTML=names.map(n=>`<option value="${esc(n)}">`).join("");
+}
+function renderAll(){renderMeds();renderKpis();renderChart();renderLog();renderMsg(true);renderGuide();$("interval").value=String(S.interval)}
 const SYM=[{k:"headache",l:"ปวดหัว"},{k:"hot",l:"ตัวร้อน"},{k:"nausea",l:"คลื่นไส้"},{k:"vomit",l:"อาเจียน"},{k:"diarrhea",l:"ถ่ายเหลว"},{k:"belly",l:"ปวดท้อง"}];
 const RED=[{k:"drowsy",l:"ซึมมาก ปลุกยาก"},{k:"stiff",l:"คอแข็ง / ปวดหัวรุนแรง"},{k:"rash",l:"ผื่นขึ้น"},{k:"nodrink",l:"ดื่มน้ำไม่ได้ / อาเจียนซ้ำ"},{k:"nopee",l:"ปัสสาวะน้อย"},{k:"blood",l:"อาเจียน/ถ่ายเป็นเลือด"},{k:"seizure",l:"ชัก",em:1},{k:"breath",l:"หายใจลำบาก",em:1},{k:"unresp",l:"ปลุกไม่ตื่น",em:1}];
 const TODO=[
@@ -503,7 +509,8 @@ $("addDose").onclick=()=>{
   const t=new Date($("doseTime").value).getTime();
   if(isNaN(t)){toast("เลือกเวลาที่กินยา");return}
   S.interval=parseInt($("interval").value);
-  S.doses.push({id:Date.now(),t});save();setNow();renderAll();toast("บันทึกการกินยาแล้ว");
+  const name=$("doseName").value.trim().slice(0,60);
+  S.doses.push(name?{id:Date.now(),t,name}:{id:Date.now(),t});save();$("doseName").value="";setNow();renderAll();toast("บันทึกการกินยาแล้ว");
 };
 $("interval").onchange=()=>{S.interval=parseInt($("interval").value);save();renderAll()};
 $("log").onclick=e=>{
