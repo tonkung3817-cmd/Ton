@@ -287,13 +287,15 @@ function save(quiet){
 }
 let memPass="";
 function getPass(){try{return localStorage.getItem(PASS_KEY)||memPass}catch(e){return memPass}}
-/* ลิงก์ส่วนตัว: https://…/Ton/#k=รหัส · อ่านรหัสจากส่วนหลัง # (ไม่ถูกส่งไปเซิร์ฟเวอร์) เก็บไว้ในเครื่อง แล้วลบออกจากแถบที่อยู่ */
+/* ลิงก์ส่วนตัว: https://…/Ton/?k=รหัส (หรือ #k=รหัส) · อ่านรหัสแล้วเก็บไว้ในเครื่อง และลบออกจากแถบที่อยู่ทันที
+   ใช้ ?k= เป็นหลักเพราะแอป LINE มักตัดส่วนหลัง # ทิ้ง */
 (function(){
-  const m=/[#&]k=([^&]+)/.exec(location.hash);
-  if(!m)return;
-  try{memPass=decodeURIComponent(m[1]).trim()}catch(e){return}
+  const g=r=>{const m=/[?#&]k=([^&#]+)/.exec(r);return m?m[1]:null};
+  const raw=g(location.search)||g(location.hash);
+  if(!raw)return;
+  try{memPass=decodeURIComponent(raw.replace(/\+/g,"%20")).trim()}catch(e){return}
   try{localStorage.setItem(PASS_KEY,memPass)}catch(e){}
-  try{history.replaceState(null,"",location.pathname+location.search)}catch(e){}
+  try{history.replaceState(null,"",location.pathname)}catch(e){}
 })();
 function setSync(t){const e=document.getElementById("syncState");if(e)e.textContent=t}
 function schedulePush(){if(!SYNC_URL)return;clearTimeout(pushTimer);pushTimer=setTimeout(sync,800)}
