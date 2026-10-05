@@ -278,7 +278,7 @@ if(!S.chk)S.chk={};
 function load(){try{const r=localStorage.getItem(KEY);if(r)return JSON.parse(r)}catch(e){}return JSON.parse(JSON.stringify(defaults))}
 /* ซิงก์ข้อมูลข้ามเครื่องผ่าน Google Sheets (Apps Script Web App)
    วาง Web App URL ที่ deploy แล้วในตัวแปรนี้ · ว่างไว้ = เก็บในเบราว์เซอร์เครื่องนี้เท่านั้น */
-const SYNC_URL="https://script.google.com/macros/s/AKfycbxu9X1mcxNLpo2FPEf-ZHH_PEDO73H-yvEnI2_tyIYdYp0dkMgLmwWztuJTNsYjzER4ZA/exec";
+const SYNC_URL="https://script.google.com/macros/s/AKfycbx7z5veXN8iv3S7Q3yxgWztVyU_RGQfkerRO9vsMRVqppKQp5069Dir2eoPwjSeTbiFiA/exec";
 const PASS_KEY="fever-sync-pass";
 let dirty=false,syncBusy=false,pushTimer=null;
 function save(quiet){
