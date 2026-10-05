@@ -39,12 +39,12 @@ function merge_(a, b) {
 function writeLog_(d) {
   const sh = sheet_(LOG_SHEET);
   sh.clear();
-  const rows = [['ประเภท', 'วันเวลา', 'ค่า']];
-  (d.temps || []).forEach(function (t) { rows.push(['วัดไข้', new Date(t.t), t.v]); });
-  (d.doses || []).forEach(function (x) { rows.push(['กินยา', new Date(x.t), '']); });
+  const rows = [['ประเภท', 'วันเวลา', 'ค่า', 'ชื่อยา']];
+  (d.temps || []).forEach(function (t) { rows.push(['วัดไข้', new Date(t.t), t.v, '']); });
+  (d.doses || []).forEach(function (x) { rows.push(['กินยา', new Date(x.t), '', x.name || '']); });
   const body = rows.slice(1).sort(function (p, q) { return p[1] - q[1]; });
   const all = [rows[0]].concat(body);
-  sh.getRange(1, 1, all.length, 3).setValues(all);
+  sh.getRange(1, 1, all.length, 4).setValues(all);
   sh.getRange(2, 2, Math.max(body.length, 1), 1).setNumberFormat('dd/MM/yyyy HH:mm');
 }
 function doGet(e) {
