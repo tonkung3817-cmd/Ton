@@ -258,8 +258,11 @@ footer{margin-top:20px;display:flex;justify-content:space-between;gap:12px;flex-
   </div>
 
   <footer>
-    <span>ข้อมูลเก็บในเบราว์เซอร์เครื่องนี้ ใช้ประกอบการดูแลเท่านั้น ไม่ใช่การวินิจฉัย</span>
-    <button class="ghost" id="reset">ล้างข้อมูลทั้งหมด</button>
+    <span>ใช้ประกอบการดูแลเท่านั้น ไม่ใช่การวินิจฉัย · <span id="syncState">ข้อมูลเก็บในเบราว์เซอร์เครื่องนี้</span></span>
+    <span style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="ghost" id="syncBtn">ตั้งรหัสซิงก์</button>
+      <button class="ghost" id="reset">ล้างข้อมูลทั้งหมด</button>
+    </span>
   </footer>
 </div>
 <div id="toast" role="status"></div>
@@ -273,7 +276,53 @@ let S=load();
 if(!S.sym)S.sym={headache:1,hot:1,nausea:1};
 if(!S.chk)S.chk={};
 function load(){try{const r=localStorage.getItem(KEY);if(r)return JSON.parse(r)}catch(e){}return JSON.parse(JSON.stringify(defaults))}
-function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+/* ซิงก์ข้อมูลข้ามเครื่องผ่าน Google Sheets (Apps Script Web App)
+   วาง Web App URL ที่ deploy แล้วในตัวแปรนี้ · ว่างไว้ = เก็บในเบราว์เซอร์เครื่องนี้เท่านั้น */
+const SYNC_URL="";
+const PASS_KEY="fever-sync-pass";
+let dirty=false,syncBusy=false,pushTimer=null;
+function save(quiet){
+  if(!quiet){S.ts=Date.now();dirty=true;schedulePush()}
+  try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}
+}
+function getPass(){try{return localStorage.getItem(PASS_KEY)||""}catch(e){return ""}}
+function setSync(t){const e=document.getElementById("syncState");if(e)e.textContent=t}
+function schedulePush(){if(!SYNC_URL)return;clearTimeout(pushTimer);pushTimer=setTimeout(sync,800)}
+function idsKey(x){return JSON.stringify([(x.temps||[]).map(i=>i.id).sort(),(x.doses||[]).map(i=>i.id).sort(),x.del||[]])}
+function mergeState(a,r){
+  const del=new Set([...(a.del||[]),...(r.del||[])]);
+  const uni=(x,y)=>{const m=new Map();[...(x||[]),...(y||[])].forEach(i=>{if(!del.has(i.id))m.set(i.id,i)});return [...m.values()]};
+  const o={...a,temps:uni(a.temps,r.temps),doses:uni(a.doses,r.doses),del:[...del]};
+  if((r.ts||0)>(a.ts||0)){o.sym=r.sym||a.sym;o.chk=r.chk||a.chk;o.interval=r.interval||a.interval;o.ts=r.ts}
+  return o;
+}
+async function sync(){
+  if(!SYNC_URL||syncBusy)return;
+  const pass=getPass();
+  if(!pass){setSync("ยังไม่ได้ตั้งรหัสซิงก์ (ข้อมูลอยู่เครื่องนี้เท่านั้น)");return}
+  syncBusy=true;
+  try{
+    const g=await fetch(SYNC_URL+"?pass="+encodeURIComponent(pass));
+    const j=await g.json();
+    if(j.error)throw new Error(j.error);
+    const remote=j.data||{};
+    const before=idsKey(S)+JSON.stringify([S.sym,S.chk,S.interval]);
+    S=mergeState(S,remote);
+    const changed=before!==idsKey(S)+JSON.stringify([S.sym,S.chk,S.interval]);
+    try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}
+    if(dirty||idsKey(S)!==idsKey(remote)){
+      const p=await fetch(SYNC_URL,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({pass,data:S})});
+      const pj=await p.json();
+      if(pj.error)throw new Error(pj.error);
+      dirty=false;
+    }
+    if(changed)renderAll();
+    const d=new Date();
+    setSync("ซิงก์แล้ว "+p2(d.getHours())+":"+p2(d.getMinutes())+" น.");
+  }catch(e){
+    setSync(String(e.message).includes("bad pass")?"รหัสซิงก์ไม่ถูกต้อง":"ซิงก์ไม่สำเร็จ จะลองใหม่ (ข้อมูลยังอยู่ในเครื่องนี้)");
+  }finally{syncBusy=false}
+}
 const $=id=>document.getElementById(id);
 const p2=n=>String(n).padStart(2,"0");
 const fT=ms=>{const d=new Date(ms);return p2(d.getHours())+":"+p2(d.getMinutes())};
@@ -324,7 +373,7 @@ function renderKpis(){
   else if(t){const l=level(t.v);chip=`<span class="status" style="--c:${col(l)}">${lvlText(t.v)} · ${t.v.toFixed(1)} °C</span>`}
   $("statusChip").innerHTML=chip;
   if(due&&S.notified!==n){
-    S.notified=n;save();
+    S.notified=n;save(true);
     try{if("Notification" in window&&Notification.permission==="granted")new Notification("ถึงเวลากินยา น้องกวินธดา",{body:"ครบ "+S.interval+" ชั่วโมงแล้ว ("+fT(n)+" น.)"})}catch(e){}
   }
   document.title=due?"ถึงเวลากินยา - น้องกวินธดา":"แฟ้มบันทึกไข้ น้องกวินธดา (ล้านรัก)";
@@ -449,6 +498,7 @@ $("interval").onchange=()=>{S.interval=parseInt($("interval").value);save();rend
 $("log").onclick=e=>{
   const b=e.target.closest("button");if(!b)return;
   const id=+b.dataset.id;
+  S.del=[...(S.del||[]),id];
   if(b.dataset.k==="t")S.temps=S.temps.filter(x=>x.id!==id);else S.doses=S.doses.filter(x=>x.id!==id);
   save();renderAll();
 };
@@ -462,11 +512,23 @@ $("notif").onclick=async()=>{
   catch(e){toast("เบราว์เซอร์นี้ไม่รองรับการแจ้งเตือน")}
 };
 $("reset").onclick=()=>{
-  if(!confirm("ล้างข้อมูลทั้งหมดและกลับไปค่าเริ่มต้น?"))return;
-  S=JSON.parse(JSON.stringify(defaults));save();renderAll();
+  if(!confirm("ล้างข้อมูลทั้งหมด (รวมข้อมูลที่ซิงก์ไว้ในทุกเครื่อง)?"))return;
+  const del=[...(S.del||[]),1,2,...S.temps.map(x=>x.id),...S.doses.map(x=>x.id)];
+  S=JSON.parse(JSON.stringify(defaults));S.temps=[];S.doses=[];S.del=[...new Set(del)];save();renderAll();
+};
+$("syncBtn").onclick=()=>{
+  if(!SYNC_URL){toast("ยังไม่ได้ตั้งค่า SYNC_URL ในไฟล์");return}
+  const v=prompt("ใส่รหัสซิงก์ (ต้องตรงกับ PASSCODE ใน Apps Script)",getPass());
+  if(v===null)return;
+  try{localStorage.setItem(PASS_KEY,v.trim())}catch(e){}
+  dirty=true;sync();
 };
 setNow();renderAll();tick();
+if(!SYNC_URL)setSync("ข้อมูลเก็บในเบราว์เซอร์เครื่องนี้ (ยังไม่เปิดซิงก์)");
+sync();
 setInterval(tick,30000);
+setInterval(sync,30000);
+document.addEventListener("visibilitychange",()=>{if(!document.hidden)sync()});
 </script>
 </body>
 </html>
